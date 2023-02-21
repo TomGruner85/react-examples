@@ -1,71 +1,46 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useCookies } from "react-cookie";
 import { useNavigate } from "react-router-dom";
 
-import { gapi, loadAuth2 } from "gapi-script";
+import { useGoogleLogin } from "@react-oauth/google";
 
+import { getGoogleProfile } from "../util/libAPI";
 import useFetch from "../../hooks/useFetch";
 import { toString } from "../util/objectUtils";
+import { login as reduxLogin } from "../redux/slices/authSlice";
 
-import { loginWithGoogle } from "../util/libAPI";
-import { login } from "../redux/slices/authSlice";
+const Google_Login = (props) => {
+  const {onError} = props
+  const [googleAccessToken, setGoogleAccessToken] = useState(null);
+  const [redirect, setRedirect] = useState(null)
 
-const GoogleLogin = (props) => {
-  const {onError} = props;
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
-  const [redirect, setRedirect] = useState(false);
-
+  const dispatch = useDispatch()
+  const navigate = useNavigate()
   const [, setCookie] = useCookies(["user"]);
 
   const {
-    data: googleLoginData,
     loading: googleLoginLoading,
     error: googleLoginError,
+    data: googleLoginData,
     sendRequest: googleLogin,
-  } = useFetch(loginWithGoogle);
-
-  const loginUser = useCallback(
-    (currentUser) => {
-      const googleIdToken = currentUser.getAuthResponse().id_token;
-      googleLogin(googleIdToken);
-    },
-    [googleLogin]
-  );
-
-  const attachSignin = useCallback(
-    (element, auth2) => {
-      auth2.attachClickHandler(
-        element,
-        {},
-        (googleUser) => {
-          loginUser(googleUser);
-          setRedirect(true);
-        },
-        (error) => {
-          console.log(JSON.stringify(error));
-        }
-      );
-    },
-    [loginUser]
-  );
+  } = useFetch(getGoogleProfile);
 
   useEffect(() => {
-    const setAuth2 = async () => {
-      const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-      const auth2 = await loadAuth2(gapi, clientId, "");
-      if (auth2.isSignedIn.get()) {
-        loginUser(auth2.currentUser.get());
-      } else {
-        attachSignin(document.getElementById("googleLoginBtn"), auth2);
-      }
-    };
-    setAuth2();
-  }, [attachSignin, loginUser]);
+    if (googleAccessToken) {
+      googleLogin(googleAccessToken);
+    }
+  }, [googleAccessToken, googleLogin]);
+
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setRedirect(true)
+      return setGoogleAccessToken(tokenResponse.access_token);
+    },
+  });
 
   useEffect(() => {
-    if (googleLoginData) {
+    if (googleLoginData && !googleLoginLoading && !googleLoginError) {
       const cookieSecure = process.env.REACT_APP_COOKIE_SECURE;
       const domain = process.env.REACT_APP_DOMAIN;
 
@@ -77,7 +52,7 @@ const GoogleLogin = (props) => {
         expiresIn: googleLoginData.expiresIn,
       };
 
-      dispatch(login(user));
+      dispatch(reduxLogin(user)); 
 
       if (cookieSecure) {
         setCookie(
@@ -103,7 +78,7 @@ const GoogleLogin = (props) => {
         navigate("/garage");
       }
     }
-  }, [googleLoginData, redirect, dispatch, navigate, setCookie]);
+  }, [googleLoginData, googleLoginLoading, googleLoginError, dispatch, login, navigate, redirect, setCookie]);
 
   useEffect(() => {
     if(googleLoginError){
@@ -112,22 +87,20 @@ const GoogleLogin = (props) => {
   }, [googleLoginError, onError])
 
   return (
-      <button
-        type="button"
-        className="signup__social-button signup__social-button--google"
-        id="googleLoginBtn"
-        disabled={googleLoginLoading}
-      >
-        <img
-          src="img/google-g.png"
-          alt=""
-          className="signup__social-button--google-img"
-        />
-        <span className="signup__social-button--google-text">
-          {googleLoginLoading ? "Loading..." : "Google"}
-        </span>
-      </button>
+    <button
+      type="button"
+      className="signup__social-button signup__social-button--google"
+      id="googleLoginBtn"
+      onClick={login}
+    >
+      <img
+        src="img/google-g.png"
+        alt=""
+        className="signup__social-button--google-img"
+      />
+      <span className="signup__social-button--google-text">Google</span>
+    </button>
   );
 };
 
-export default GoogleLogin;
+export default Google_Login;
